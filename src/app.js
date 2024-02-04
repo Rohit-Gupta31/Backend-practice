@@ -22,4 +22,18 @@ app.use(cookieParser());
 // user ke browser me jo cookie pe CRUD opertion karne ke liye
 
 
+//routes import 
+import userRouter from './routes/user.routes.js';
+
+//routes declaration
+// app.get() direct nahi kar sakte kyuki router alag rakha hai to as middleware use hoga.
+
+app.use("/api/v1/users", userRouter)
+
+// koi bhi /users likhega control chala jayega userRouter ko
+//http://localhost:8000/api/v1/users/register =>
+// http://localhost:8000/api/v1/users -> control userRouter ko chala jayega -> /register
+// http://localhost:8000/api/v1/users/login
+
+
 export { app };
