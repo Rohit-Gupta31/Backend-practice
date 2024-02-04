@@ -51,7 +51,7 @@ userSchema.pre("save" , async function(req, res ,next){
     if(!this.isModified("password")) return next();
 
     // agar password modify hua hai to hi encrypt karna(kyuki jab bhi save karenge kuch bhi to pre chalega). 
-  this.password = bcrypt.hash(this.password,10);
+  this.password = await bcrypt.hash(this.password,10);
   next();
 })
 // Pre middleware functions are executed one after another, when each middleware calls next.=>(data save karne se pahle encrypt kar do)
