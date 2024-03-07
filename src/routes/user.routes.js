@@ -1,6 +1,7 @@
 import { Router }  from 'express';
-import { registerUser } from '../controllers/user.controller.js';
+import { loginUser, registerUser , logoutUser , refreshAccessToken} from '../controllers/user.controller.js';
 import { upload} from '../middlewares/multer.middleware.js';
+import { verifyJWT } from '../middlewares/auth.middleware.js';
 
 const router = Router();
 
@@ -15,11 +16,20 @@ router.route("/register").post(
             maxCount: 1 ,
         }
     ]), 
-    // function(registerUser) call karne se pahle middleware(upload) se mil ke jana 
+    // function(registerUser) call karne se pahle multer ke middleware(upload) se mil ke jana 
     registerUser
     );
 
+ 
+router.route("/login").post(loginUser) ;
 
+// secured routes
+router.route("/logout").post(verifyJWT , logoutUser) ;
+router.route("/refresh-token").post(refreshAccessToken) ;
+
+/* router.route("/logout").post(verifyJWT , anotherMiddleware ,  logoutUser) ;
+ aise ik aor middleware laga sakte hai named anotherMiddleware*/
+ 
 export default router;
 
 

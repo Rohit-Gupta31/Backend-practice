@@ -1,8 +1,30 @@
 import { asyncHandler } from '../utils/asyncHandler.js';
-import {ApiError} from '../utils/apiError.js';
+import {ApiError} from '../utils/ApiError.js';
 import { User } from '../models/user.models.js';
-import { uploadOnCloudinary } from '../utils/uploadOnCloudinary.js';
+import { uploadOnCloudinary } from '../utils/cloudinary.js';
 import { ApiResponse } from '../utils/ApiResponse.js';
+import jwt from "jsonwebtoken";
+import { response } from 'express';
+
+const generateAccessAndRefreshTokens = async(userId)=>{
+  try{
+     const user = await User.findById(userId);
+     const accessToken = user.generateAccessToken();
+     const refreshToken = user.generateRefreshToken();
+
+    //  refresh token ko database me kaise rakhe =>
+    user.refreshToken = refreshToken;
+    // database me save kar denge .
+    await user.save({validateBeforeSave : false});
+
+    return { accessToken , refreshToken };
+
+  } catch(error){
+    throw new ApiError(500 , "Something went wrong while generating access and refresh token");
+  }
+}
+ // generateAccessAndRefreshToken method jo yahi use karenge koi web request nahi kar rahe hai isliye asynhandler use nahi kar rahe hai.
+
 
 const registerUser = asyncHandler( async( req , res) =>{
     // res.status(200).json({
@@ -21,24 +43,24 @@ const registerUser = asyncHandler( async( req , res) =>{
         // check for user creation 
         // return response
         
-        const { fullname , email , password , username} = req.body;
+        const { fullName , email , password , username} = req.body;
         // through destructuring
         console.log(" email: " , email); // just check through postman(POST -> body -> raw -> json(send json data))
-        console.log(req.body); // just for check
+        console.log("req.body : " ,req.body); // just for check
         
         //    if(fullname === ""){
             //     throw new ApiError(400 , "fullname is required")
             //    }  // begineer level to check all field one by one
             
             
-            if([fullname , email , password , username].some((field)=>field?.trim() === "")){
+            if([fullName , email , password , username].some((field)=>field?.trim() === "")){
                 throw new ApiError(400 , "All fields are required");   
             }
             
-            const existedUser = User.findOne({
+            const existedUser = await User.findOne({
                 $or: [{username},{email}] 
             })
-            console.log(existedUser); // just for check
+            console.log("existedUser : ",existedUser); // just for check
             
             if(existedUser){
                 throw new ApiError(409 , "User with email or username already exists")
@@ -48,12 +70,19 @@ const registerUser = asyncHandler( async( req , res) =>{
    // multer give access of req.files as body-parser give req.body
    const avatarLocalPath = req.files?.avatar[0]?.path
    
-   console.log(avatar); // just for check
+   //console.log(avatar); // just for check
    console.log(req.files) // just for check
    console.log("local path as it is on our server and not on cloudinary ",avatarLocalPath );
    
    
-   const coverImageLocalPath = req.files?.coverImage[0]?.path
+   
+   //   const coverImageLocalPath = req.files?.coverImage[0]?.path; =>
+  let coverImageLocalPath;
+  if(req.files && Array.isArray(req.files.coverImage)  && req.files.coverImage.length>0) {
+    coverImageLocalPath = req.files.coverImage[0].path;
+  }
+
+//   Array.isArray(req.files.coverImage)=> req.files.coverImage array hai ya nahi
    
    //   As avatar is required field in User model
    if(!avatarLocalPath){
@@ -72,19 +101,23 @@ const registerUser = asyncHandler( async( req , res) =>{
     }
 
     const user = await User.create({
-        fullname,
+        fullName,
+        // same as fullName : fullName.
         avatar : avatar.url,
         coverImage: coverImage?.url || "",
         email,
         password,
         username : username.toLowerCase(),
-    })
+    });
+
+
 
       const createdUser = await User.findById(user._id).select(
         "-password -refreshToken"
       );
+      // User me se password and refresh token remove karke bhejenge.
 
-      console.log(createdUser); // just for check
+      console.log("createdUser : " ,createdUser); // just for check
 
       if(!createdUser){
         throw new ApiError(500,"Something went wrong while registering the user")
@@ -97,5 +130,178 @@ const registerUser = asyncHandler( async( req , res) =>{
 
 });
 
+const loginUser = asyncHandler( async (req, res) => {
+    // req body se data le aao
+    // username or email 
+    // find the user
+    // password check
+    // access and refresh token
+    // send tokens in form of cookie
 
-export { registerUser}
+
+    const {email , username, password} = req.body;
+   
+    console.log(email,username,password);
+
+    if(!(username || email)){
+      throw new ApiError(400 , "username or email is required");
+    }
+   
+  
+  // alternative code for above logic.
+//   if (!username && !email) {
+//     throw new ApiError(400, "username and email is required")
+// }
+
+    const user =  await User.findOne({
+      $or: [{username} , {email}]
+    })
+   
+    if(!user){
+      throw new ApiError(404 , "User does not exist");
+    }
+
+    // "User" mongodb(mongoose) ka object hai to jo mongoose ke methods hai jaise findOne , create wo User ko available hai. isliye User ke aage await laga rahe hai kyuki mongodb se baat kar rahe hai.
+    // isPasswordCorrect , generateAccessToken  ye sab methods hamare user me available hai "user"(database se instance liya hai )
+
+    const isPasswordValid = await user.isPasswordCorrect(password);
+      // password user ka hai jo send kiya hai and this.password se saved user ka password milega.
+    if(!isPasswordValid) {
+      throw new ApiError(401 , "Invalid user credentials");
+    }
+    
+    // generate access token and refresh token is common so we make separate method.
+    // Access token to user ko de dete hai lekin refresh token apne database me bhi rakhte hai (access token shortlived aor refresh token longlived hote hai) taki baar baar password na puchna pade user se .
+
+    const {accessToken , refreshToken } = await generateAccessAndRefreshTokens(user._id);
+  // access token and refresh token mil gya.
+   // above function me user me refrreshToken hai but function ke nadar variable user me hamare pass below line me user User.findOne se mila jisme refreshToken empty hai.(isi user ko update kar dete hai bajaye ki database se phir se request karne ke );
+
+   const loggedInUser = await User.findById(user.id).select("-password -refreshToken");
+
+   
+   const options = {
+    httpOnly : true,
+    secure : true,
+   }
+// cookie by default modifiable hoti hai but httpOnly and secure true ke baad kewal server se hi modify ho sakti hai frontend se modifiable nahi hoti hai. 
+
+// cookie-parser se cookie ka access mil jayega => app.js me middleware config kar chuke hai .(req and res dono me cookie access kar sakte hai)
+
+return res
+.status(200)
+.cookie("accessToken" , accessToken , options)
+.cookie("refreshToken" , refreshToken , options)
+.json(
+  new ApiResponse(
+    200, 
+      {
+        user: loggedInUser, accessToken , refreshToken
+      }, // data field hai 
+      "User logged in successfully"
+    
+  )
+)
+
+
+});
+
+const logoutUser = asyncHandler( async(req, res) => {
+
+ // User.findById() => User hamne email ya password(req.body ) ke through liya tha but logout karte waqt email ya password thode lenge 
+ // middleware => jane se pahle mil ke jana .
+ // auth.middleware.js design karenge.
+     
+
+    await User.findByIdAndUpdate(
+      req.user._id , // find kaise karna hai
+      {
+         $set: {
+          refreshToken: undefined
+         }
+      } , // koun  koun sa field update karna hai
+      {
+        new : true 
+      }
+    )
+  
+    const options = {
+      httpOnly : true,
+      secure : true,
+     }
+
+     return res
+     .status(200)
+     .clearCookie("accessToken" , options)
+     .clearCookie("refreshToken" , options)
+     .json( new ApiResponse(200 , {} , "User logged Out"))
+
+})
+
+
+
+
+// Access Token - Short lived, not stored in db
+// Refresh Token - Long lived, stored in db
+// When access token expires, the frontend sends the refresh token to the backend to validate user (login), once again.
+
+
+const refreshAccessToken = asyncHandler(async(req, res) => {
+
+  const incomingRefreshToken = req.cookies.refreshToken || req.body.refreshToken;
+
+  if(incomingRefreshToken){
+    throw new ApiError(401 , "Unauthorized request")
+  }
+
+  try {
+    const decodedToken = jwt.verify(
+      incomingRefreshToken,
+      process.env.REFRESH_TOKEN_SECRET
+    )
+    // verify karne ke baad id milegi user ki in decodedToken variable
+    // incomingRefreshToken === process.env.REFRESH_TOKEN_SECRET aise direct nahi kar sakte kyuki user ke pass encrypted jata hai so use jwt to verify.
+    
+    console.log("decodedToken in user.controller.js : " , decodedToken);
+    
+   const user = await User.findById(decodedToken?._id);
+  
+     if(!user){
+      throw new ApiError(401 , "Invalid refresh token")
+    }
+    
+  
+    if(incomingRefreshToken !== user?.refreshToken){
+      throw new ApiError(401 , "Refresh token is expired or used ")
+    }
+    
+    // agar incomingRefreshToken === user?.refreshToken -->
+    // sara verification to ho gya hai to nya generate karke de dete hain.
+  
+   const {accessToken , newRefreshToken } = await generateAccessAndRefreshTokens(user._id);
+  
+    const options = {
+      httpOnly : true,
+      secure : true,
+     }
+   
+      return res
+      .status(200)
+      .cookie("accessToken" ,accessToken , options )
+      .cookie("refreshToken" ,newRefreshToken , options)
+      .json(
+        new ApiResponse(
+          200,
+          {accessToken , refreshToken : newRefreshToken},
+          "Access Token refreshed"
+        )
+      )
+  
+  } catch (error) {
+    throw new ApiError(401 , error?.message || "Invlalid refresh Token")
+  }
+
+
+})
+
+export { registerUser , loginUser , logoutUser , refreshAccessToken }

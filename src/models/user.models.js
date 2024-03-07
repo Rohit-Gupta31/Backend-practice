@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
 
 const userSchema = new Schema({
-    userSchema: {
+    username: {
         type: String,
         required: true,
         unique: true,
@@ -47,13 +47,16 @@ const userSchema = new Schema({
 
 },{timestamps: true});
 
-userSchema.pre("save" , async function(req, res ,next){
-    if(!this.isModified("password")) return next();
+// userSchema.pre("save" , async function(req, res, next){
+userSchema.pre("save" , async function(next){
+    if(!this.isModified("password")){
+        return next();
+    }
+    this.password = await bcrypt.hash(this.password, 10)
+    next();
+// agar password modify hua hai to hi encrypt karna(kyuki jab bhi save karenge kuch bhi to pre chalega). 
+});
 
-    // agar password modify hua hai to hi encrypt karna(kyuki jab bhi save karenge kuch bhi to pre chalega). 
-  this.password = await bcrypt.hash(this.password,10);
-  next();
-})
 // Pre middleware functions are executed one after another, when each middleware calls next.=>(data save karne se pahle encrypt kar do)
 //   (req ,res ) is not necessary here just for understanding. we cant use arrow function here because
 //  arrow function does not have context(this)  
@@ -93,7 +96,7 @@ userSchema.methods.generateRefreshToken = function(){
     )
 }
 
-//userSchema.methods. methods inject kae rahe hai.
+//userSchema.methods. methods inject kar rahe hai.
 
 
 export const User = mongoose.model('User', userSchema);
