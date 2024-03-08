@@ -304,4 +304,159 @@ const refreshAccessToken = asyncHandler(async(req, res) => {
 
 })
 
-export { registerUser , loginUser , logoutUser , refreshAccessToken }
+// User logged in tabhi password change kar payega .
+
+
+
+// update controllers for user --
+ const changeCurrentPassword = asyncHandler(async (req , res) => {
+   const {oldPassword, newPassword} =req.body;
+
+   const user = await User.findById(req.user?._id);
+
+   const isPasswordCorrect = await user.isPasswordCorrect(oldPassword);
+
+   if(!isPasswordCorrect){
+    throw new ApiError(400 , "Invalid old password")
+   }
+
+  user.password = newPassword;
+  await user.save({validateBeforeSave: false})
+  // save se pahle pre hook chaelga
+
+  return res
+  .status(200)
+  .json(
+    new ApiResponse(200,
+      {},
+      "Password changed successfully"
+      )
+  )
+
+ })
+
+// alag alag jagah currentUsre chahiye hoga so ik endPoint bna lenge
+
+// agar user logged in hai to currentUser aram se de sakte hai.
+ const getCurrentUser = asyncHandler(async (req , res) => {
+   return res
+   .status(200)
+   .json(200 , 
+    req.user
+    ,"Current user fetched successfully")
+ });
+
+//  baki aor kya kya upadte karna allow kar sakte hai password ke liye alag se bna rakha hai changeCurrentPassword
+
+const updateAccountDetails = asyncHandler(async (req , res) => {
+   const {fullName, email, } = req.body ;
+
+   if(!fullName || !email){
+    throw new ApiError(400, "All fields are required");
+   }
+ // password ke time ik hi field tha to direct hi update kar diya tha 
+  const user =  User.findByIdAndUpdate(
+      req.user?._id,
+      {
+        $set : {
+          fullName ,
+          email : email
+        }
+      },
+     { new : true}  
+   ).select("-password")
+
+ return res
+  .status(200)
+  .json(new ApiResponse(200 , user , "Account details updated successfully"))
+});
+ 
+
+// files update separately handle karenge
+const updateUserAvatar = asyncHandler(async (req,res) => {
+ // req.file ka access multer middleware ke through hai
+//  file not files kyuki ik hi file chahye.
+
+  const avatarLocalPath = req.file?.path;
+ //local pe multer ne upload kar di hogi
+
+  if(!avatarLocalPath){
+    throw new ApiError(400 , "Avatar file is missing")
+  }
+
+ const avatar = await uploadOnCloudinary(avatarLocalPath)
+ 
+ console.log("avatar in upadteUserAvatar : " , avatar );
+
+ if(!avatar.url){
+  throw new ApiError(400 , "Error while uploading on avatar")
+ }
+
+ const user =  User.findByIdAndUpdate(
+  req.user?._id,
+  {
+    $set : {
+     avatar : avatar.url
+    }
+  },
+ { new : true}  
+).select("-password");
+
+return res
+.status(200)
+.json( 
+  new ApiResponse(200 , user , "avatar image updated successfully")
+)
+
+})
+
+
+//similarly for coverImage.
+const updateUsercoverImage = asyncHandler(async (req,res) => {
+  // req.file ka access multer middleware ke through hai
+ //  file not files kyuki ik hi file chahye.
+ 
+   const coverImageLocalPath = req.file?.path;
+  //local pe multer ne upload kar di hogi
+ 
+   if(!coverImageLocalPath){
+     throw new ApiError(400 , "coverImage  file is missing")
+   }
+ 
+  const coverImage = await uploadOnCloudinary(coverImageLocalPath)
+  
+  console.log("avatar in upadteUsercoverImage : " , coverImage );
+ 
+  if(!coverImage.url){
+   throw new ApiError(400 , "Error while uploading on coverImage")
+  }
+ 
+  const user =  User.findByIdAndUpdate(
+   req.user?._id,
+   {
+     $set : {
+      coverImage : coverImage.url
+     }
+   },
+  { new : true}  
+ ).select("-password")
+
+  return res
+  .status(200)
+  .json( 
+    new ApiResponse(200 , user , "cover image updated successfully")
+  )
+ 
+ })
+
+
+export { registerUser , 
+  loginUser ,
+  logoutUser ,
+  refreshAccessToken,
+  changeCurrentPassword,
+  getCurrentUser,
+  updateAccountDetails,
+  updateUserAvatar,
+  updateUsercoverImage
+  }
