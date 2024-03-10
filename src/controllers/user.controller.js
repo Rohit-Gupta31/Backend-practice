@@ -156,7 +156,9 @@ const loginUser = asyncHandler( async (req, res) => {
     const user =  await User.findOne({
       $or: [{username} , {email}]
     })
-   
+    
+   console.log("user : " , user);
+
     if(!user){
       throw new ApiError(404 , "User does not exist");
     }
@@ -177,9 +179,15 @@ const loginUser = asyncHandler( async (req, res) => {
   // access token and refresh token mil gya.
    // above function me user me refrreshToken hai but function ke nadar variable user me hamare pass below line me user User.findOne se mila jisme refreshToken empty hai.(isi user ko update kar dete hai bajaye ki database se phir se request karne ke );
 
-   const loggedInUser = await User.findById(user.id).select("-password -refreshToken");
-
    
+   
+   // const loggedInUser = user.select("-password -refreshToken");
+   // TypeError: user.select is not a function
+   // database se hi request marni padegi.
+    const loggedInUser = await User.findById(user._id).select("-password -refreshToken");
+
+   console.log("\nlogged in user : " , loggedInUser);
+
    const options = {
     httpOnly : true,
     secure : true,
@@ -216,8 +224,8 @@ const logoutUser = asyncHandler( async(req, res) => {
     await User.findByIdAndUpdate(
       req.user._id , // find kaise karna hai
       {
-         $set: {
-          refreshToken: undefined
+         $unset: {
+          refreshToken:1 //this remove the field from document.
          }
       } , // koun  koun sa field update karna hai
       {
@@ -304,15 +312,23 @@ const refreshAccessToken = asyncHandler(async(req, res) => {
 
 })
 
+
+
+
 // User logged in tabhi password change kar payega .
-
-
-
 // update controllers for user --
  const changeCurrentPassword = asyncHandler(async (req , res) => {
    const {oldPassword, newPassword} =req.body;
+   
+   console.log("old password: " , oldPassword + ", new password: " , newPassword) ;
+
+   console.log("\n req.user : ", req.user );
+   // password nahi hai 
 
    const user = await User.findById(req.user?._id);
+
+   console.log("\n user : ", user);
+   // password hai 
 
    const isPasswordCorrect = await user.isPasswordCorrect(oldPassword);
 
@@ -454,6 +470,8 @@ const updateUsercoverImage = asyncHandler(async (req,res) => {
 
 const getUserChannelProfile = asyncHandler(async(req , res)=>{
   const {username} = req.params
+  
+  console.log("username : " , username);
 
   if(!username?.trim()){
     throw new ApiError(400 , "username is missing")
